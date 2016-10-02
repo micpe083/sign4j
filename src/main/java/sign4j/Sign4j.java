@@ -115,8 +115,8 @@ public class Sign4j
             final boolean isMatch = image[p + 0] == ZIP_END_HEADER[0] && image[p + 1] == ZIP_END_HEADER[1]
                     && image[p + 2] == ZIP_END_HEADER[2] && image[p + 3] == ZIP_END_HEADER[3];
 
-            if (isMatch && (Byte.toUnsignedInt(image[p + END_HEADER_SIZE - 1]) << 8
-                    | Byte.toUnsignedInt(image[p + END_HEADER_SIZE - 2])) == sgm - (p + END_HEADER_SIZE))
+            if (isMatch && (toUnsignedInt(image[p + END_HEADER_SIZE - 1]) << 8
+                    | toUnsignedInt(image[p + END_HEADER_SIZE - 2])) == sgm - (p + END_HEADER_SIZE))
             {
                 break;
             }
@@ -125,8 +125,8 @@ public class Sign4j
         if (p > 0)
         {
             final int off = lng - (sgm - (p + END_HEADER_SIZE - 2));
-            cmn = Byte.toUnsignedInt(image[p + END_HEADER_SIZE - 1]) << 8
-                    | Byte.toUnsignedInt(image[p + END_HEADER_SIZE - 2]);
+            cmn = toUnsignedInt(image[p + END_HEADER_SIZE - 1]) << 8
+                    | toUnsignedInt(image[p + END_HEADER_SIZE - 2]);
 
             final String trg;
             if (!spt && inf.equals(outf))
@@ -213,6 +213,10 @@ public class Sign4j
         pb.redirectErrorStream(true);
         final Process p = pb.start();
         return p.waitFor();
+    }
+
+    private static int toUnsignedInt(byte x) {
+        return ((int) x) & 0xff;
     }
 
     private static void usage()
