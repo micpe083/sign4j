@@ -154,7 +154,7 @@ public class Sign4j
             }
             close(fd);
 
-            final List<String> command = new ArrayList<>();
+            final List<String> command = new ArrayList<String>();
             for (i = j; i < args.length; i++)
             {
                 final String pp = (args[i] == outf ? trg : args[i]);
@@ -187,7 +187,7 @@ public class Sign4j
             printf("You don't need sign4j to sign this file\n");
         }
 
-        final List<String> command = new ArrayList<>();
+        final List<String> command = new ArrayList<String>();
         for (i = j; i < args.length; i++)
         {
             String pp = args[i].trim();
