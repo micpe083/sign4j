@@ -2,180 +2,78 @@ package sign4j;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
-import java.util.ArrayList;
-import java.util.List;
 
 public class Sign4j
 {
-    private static final byte[] ZIP_END_HEADER = new byte[] { 80, 75, 5, 6 };
     private static final int END_HEADER_SIZE = 22;
     private static final int MAX_COMMENT_SIZE = 0xFFFF;
     private static final int SWAP_BLOCK_SIZE = 4 * 1024 * 1024;
-    private static final String TEST_FILE_NAME = "sign4j_temporary.exe";
-    private static final String SIGN4J_VERSION = "3.0";
 
-    public Sign4j()
+    private final File exeFile;
+    private final File tempFile = new File("sign4j_temporary.exe");
+    private final Signer signer;
+
+    public Sign4j(final File exeFile,
+                  final Signer signer)
     {
+        this.exeFile = exeFile;
+        this.signer = signer;
     }
 
-    // int main (int argc, char* argv[])
-    public static void main(final String[] args) throws Exception
+    public void sign() throws Exception
     {
-        String inf = null;
-        String outf = null;
-        int ext;
-        int sgm;
-        boolean fnd = false;
-        boolean spt = false;
-        boolean unq = false;
-        boolean vrb = false;
-        int cmn = 0;
-        int i, j;
-        int p;
+        final int exeFileLen = (int) exeFile.length();
 
-        for (i = 0; i < args.length && args[i].startsWith("-"); i++)
+        final int blockSize = (exeFileLen > SWAP_BLOCK_SIZE ? SWAP_BLOCK_SIZE : exeFileLen);
+
+        final byte[] bytes = new byte[blockSize];
+
+        final int sgm = blockSize > END_HEADER_SIZE + MAX_COMMENT_SIZE ? END_HEADER_SIZE + MAX_COMMENT_SIZE : blockSize;
+
+        RandomAccessFile fd = new RandomAccessFile(exeFile, "r");
+        fd.seek(exeFileLen - sgm);
+        fd.readFully(bytes, 0, sgm);
+        close(fd);
+
+        int pos;
+
+        for (pos = sgm - END_HEADER_SIZE; pos > 0; pos--)
         {
-            if ("--onthespot".equals(args[i]))
-            {
-                spt = true;
-            }
-            else if ("--strict".equals(args[i]))
-            {
-                unq = true;
-            }
-            else if ("--verbose".equals(args[i]))
-            {
-                vrb = true;
-            }
-        }
-
-        j = i;
-        for (i = j + 1; i < args.length; i++)
-        {
-            if ("-in".equals(args[i]) && i < args.length - 1)
-            {
-                inf = args[++i];
-                fnd = true;
-            }
-            else if ("-out".equals(args[i]) && i < args.length - 1)
-            {
-                outf = args[++i];
-                fnd = true;
-            }
-            else if (args[i].startsWith("-") || (args[i].startsWith("/") && args[i].length() < 5))
-            {
-                if (!fnd)
-                {
-                    inf = outf = null;
-                }
-            }
-            else if (!fnd && args[i].endsWith(".exe"))
-            {
-                inf = outf = args[i];
-            }
-        }
-
-        if (inf == null || outf == null)
-        {
-            usage();
-        }
-        // atexit (clear);
-
-        RandomAccessFile fd = null;
-        RandomAccessFile td = null;
-
-        try
-        {
-            fd = new RandomAccessFile(inf, "r");
-        }
-        catch (Exception e)
-        {
-            quit(1);
-        }
-
-        final int lng = (int) fd.length();
-        fd.seek(fd.length());
-        if (lng <= 0)
-        {
-            quit(2);
-        }
-
-        final int blck = (lng > SWAP_BLOCK_SIZE ? SWAP_BLOCK_SIZE : lng);
-
-        final byte[] image = new byte[blck];
-
-        sgm = (blck > END_HEADER_SIZE + MAX_COMMENT_SIZE ? END_HEADER_SIZE + MAX_COMMENT_SIZE : blck);
-
-        fd.seek(lng - sgm);
-        fd.readFully(image, 0, sgm);
-
-        for (p = sgm - END_HEADER_SIZE; p > 0; p--)
-        {
-            final boolean isMatch = image[p + 0] == ZIP_END_HEADER[0] && image[p + 1] == ZIP_END_HEADER[1]
-                    && image[p + 2] == ZIP_END_HEADER[2] && image[p + 3] == ZIP_END_HEADER[3];
-
-            if (isMatch && (toUnsignedInt(image[p + END_HEADER_SIZE - 1]) << 8
-                    | toUnsignedInt(image[p + END_HEADER_SIZE - 2])) == sgm - (p + END_HEADER_SIZE))
+            if (isZipEndHeader(bytes, pos) &&
+                (toUnsignedInt(bytes[pos + END_HEADER_SIZE - 1]) << 8 | toUnsignedInt(bytes[pos + END_HEADER_SIZE - 2])) == sgm - (pos + END_HEADER_SIZE))
             {
                 break;
             }
         }
 
-        if (p > 0)
+        if (pos > 0)
         {
-            final int off = lng - (sgm - (p + END_HEADER_SIZE - 2));
-            cmn = toUnsignedInt(image[p + END_HEADER_SIZE - 1]) << 8
-                    | toUnsignedInt(image[p + END_HEADER_SIZE - 2]);
+            final int off = exeFileLen - (sgm - (pos + END_HEADER_SIZE - 2));
+            int cmn = toUnsignedInt(bytes[pos + END_HEADER_SIZE - 1]) << 8 | toUnsignedInt(bytes[pos + END_HEADER_SIZE - 2]);
 
-            final String trg;
-            if (!spt && inf.equals(outf))
+            copyToTempFile(exeFile, tempFile);
+
+            signer.sign(tempFile);
+
+            final int tempFileLen = (int) tempFile.length();
+            cmn += tempFileLen - exeFileLen;
+
+            if (cmn < 0 || cmn > MAX_COMMENT_SIZE)
             {
-                printf("Making temporary file\n");
-
-                new File(TEST_FILE_NAME).delete();
-                new File(TEST_FILE_NAME).createNewFile();
-                new File(TEST_FILE_NAME).deleteOnExit();
-                td = new RandomAccessFile(TEST_FILE_NAME, "rw");
-
-                fd.seek(0);
-                for (ext = lng; ext > 0; ext -= blck)
-                {
-                    sgm = ext > blck ? blck : ext;
-                    fd.readFully(image, 0, sgm);
-                    td.write(image, 0, sgm);
-                }
-                close(td);
-                trg = TEST_FILE_NAME;
-            }
-            else
-            {
-                trg = outf;
-            }
-            close(fd);
-
-            final List<String> command = new ArrayList<String>();
-            for (i = j; i < args.length; i++)
-            {
-                final String pp = (args[i] == outf ? trg : args[i]);
-                command.add(pp.trim());
-            }
-            system(command);
-
-            td = new RandomAccessFile(trg, "r");
-            td.seek(td.length());
-            ext = (int) td.length();
-            close(td);
-
-            if ((cmn += ext - lng) < 0 || cmn > MAX_COMMENT_SIZE)
-            {
-                quit(8);
+                throw new Exception("unsupported operation");
             }
 
-            fd = new RandomAccessFile(inf, "rw");
+            fd = new RandomAccessFile(exeFile, "rw");
             fd.seek(off);
 
-            final byte[] bfr = new byte[] { (byte) (cmn & 0xFF), (byte) (cmn >> 8 & 0xFF) };
+            final byte[] bfr = new byte[2];
+            bfr[0] = (byte) (cmn & 0xFF);
+            bfr[1] = (byte) (cmn >> 8 & 0xFF);
 
             fd.write(bfr);
 
@@ -183,21 +81,65 @@ public class Sign4j
         }
         else
         {
-            close(fd);
-            printf("You don't need sign4j to sign this file\n");
+            log("You don't need sign4j to sign this file\n");
         }
 
-        final List<String> command = new ArrayList<String>();
-        for (i = j; i < args.length; i++)
-        {
-            String pp = args[i].trim();
-            command.add(pp.trim());
-        }
-
-        System.exit(system(command));
+        signer.sign(exeFile);
     }
 
-    private static void close(Closeable c) throws Exception
+    static boolean isZipEndHeader(final byte[] image,
+                                  final int offset)
+    {
+        boolean ret = false;
+
+        final byte[] zipEndHeader = new byte[] {80, 75, 5, 6};
+
+        for (int i = 0; i < zipEndHeader.length; i++)
+        {
+            ret = image[offset + i] == zipEndHeader[i];
+
+            if (!ret)
+            {
+                break;
+            }
+        }
+
+        return ret;
+    }
+
+    static void copyToTempFile(final File source,
+                               final File dest) throws Exception
+    {
+        log("Creating temporary file");
+
+        dest.delete();
+        dest.createNewFile();
+        dest.deleteOnExit();
+
+        InputStream is = null;
+        OutputStream os = null;
+        try
+        {
+            is = new FileInputStream(source);
+            os = new FileOutputStream(dest);
+
+            final byte[] buffer = new byte[1024];
+
+            int length;
+
+            while ((length = is.read(buffer)) > 0)
+            {
+                os.write(buffer, 0, length);
+            }
+        }
+        finally
+        {
+            close(is);
+            close(os);
+        }
+    }
+
+    static void close(final Closeable c) throws Exception
     {
         if (c != null)
         {
@@ -205,72 +147,13 @@ public class Sign4j
         }
     }
 
-    private static int system(final List<String> command) throws Exception
+    static int toUnsignedInt(final byte x)
     {
-        System.out.println("run command: " + command);
-
-        final ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
-        final Process p = pb.start();
-        return p.waitFor();
-    }
-
-    private static int toUnsignedInt(byte x) {
         return ((int) x) & 0xff;
     }
 
-    private static void usage()
-    {
-        printf("\nThis is sign4j version " + SIGN4J_VERSION + "\n\n");
-        printf("Usage: sign4j [options] <arguments>\n\n");
-        printf(" * options:\n");
-        printf("    --onthespot   avoid the creation of a temporary file (your tool must be able to sign twice)\n");
-        printf("    --strict      supress the use of double quotes around parameters that strictly don't need them\n");
-        printf("    --verbose     show diagnostics about intermediary steps of the process\n");
-        printf(" * arguments must specify verbatim the command line for your signing tool\n");
-        printf(" * only one file can be signed on each invocation\n");
-        System.exit(-1);
-    }
-
-    private static void quit(int rsn)
-    {
-        switch (rsn)
-        {
-        case 1:
-            printf("Could not open file\n");
-            break;
-        case 2:
-            printf("Could not read file\n");
-            break;
-        case 3:
-            printf("Could not write file\n");
-            break;
-        case 4:
-            printf("Not enough memory\n");
-            break;
-        case 5:
-            printf("Could not open temporary\n");
-            break;
-        case 6:
-            printf("Could not write temporary\n");
-            break;
-        case 7:
-            printf("Could not read target\n");
-            break;
-        case 8:
-            printf("Unsupported operation\n");
-            break;
-        }
-        System.exit(-1);
-    }
-
-    private static void printf(String s)
+    static void log(final String s)
     {
         System.out.println(s);
-    }
-
-    private static void clear()
-    {
-        new File(TEST_FILE_NAME).delete();
     }
 }
