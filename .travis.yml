@@ -14,8 +14,8 @@ cache:
     - $HOME/.gradle/caches/
     - $HOME/.gradle/wrapper/
 
-script:
-    - "./gradlew clean build cobertura coveralls --stacktrace --info"
+#script:
+#    - "./gradlew clean build cobertura coveralls --stacktrace --info"
 
-#after_success:
-#    - ./gradlew clean cobertura coberturaCheck coveralls
+after_success:
+    - ./gradlew cobertura coveralls
