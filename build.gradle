@@ -6,6 +6,8 @@ plugins {
     id "com.github.kt3k.coveralls" version "2.6.3"
 }
 
+cobertura.coverageFormats = ['html', 'xml']
+
 sourceCompatibility = 1.6
 targetCompatibility = 1.6
 
