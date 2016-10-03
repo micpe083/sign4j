@@ -1,10 +1,10 @@
 package sign4j;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
+import java.io.Closeable;
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 import org.apache.commons.io.FileUtils;
@@ -84,5 +84,26 @@ public class TestSign4j
                 peFile.close();
             }
         }
+    }
+
+    @Test
+    public void testCloseNull() throws Exception
+    {
+        Sign4j.close(null);
+    }
+
+    @Test
+    public void testCloseEx() throws Exception
+    {
+        final Closeable c = new Closeable()
+        {
+            @Override
+            public void close() throws IOException
+            {
+                throw new IOException();
+            }
+        };
+
+        Sign4j.close(c);
     }
 }

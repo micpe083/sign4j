@@ -1,6 +1,10 @@
-apply plugin: 'java'
-apply plugin: 'eclipse'
-//apply plugin: 'checkstyle'
+plugins {
+    id 'java'
+    id 'eclipse'
+    //id 'checkstyle'
+    id 'net.saliman.cobertura' version '2.3.2'
+    id "com.github.kt3k.coveralls" version "2.6.3"
+}
 
 sourceCompatibility = 1.6
 targetCompatibility = 1.6
