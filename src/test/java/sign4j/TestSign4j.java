@@ -52,9 +52,10 @@ public class TestSign4j
             @Override
             public void sign(final File file) throws Exception
             {
-                PESignerCLI.main("--name=WinEyes", "--url=http://www.steelblue.com/WinEyes", "--alg=SHA-1",
-                                 "--keystore=" + keystore.getAbsolutePath(), "--alias=" + alias, "--keypass=" + keypass,
-                                 "" + file);
+                PESignerCLI.main("--keystore=" + keystore.getAbsolutePath(),
+                                 "--alias=" + alias,
+                                 "--keypass=" + keypass,
+                                 file.getAbsolutePath());
             }
         };
 
@@ -63,9 +64,13 @@ public class TestSign4j
 
         assertTrue("The file " + targetFile + " wasn't changed", sourceFileChecksum != FileUtils.checksumCRC32(targetFile));
 
-        final PEFile peFile = new PEFile(targetFile);
+        System.out.println(baseFilename + " - " + FileUtils.checksumCRC32(targetFile));
+
+        PEFile peFile = null;
         try
         {
+            peFile = new PEFile(targetFile);
+
             final List<CMSSignedData> signatures = peFile.getSignatures();
             assertNotNull(signatures);
             assertEquals(1, signatures.size());
@@ -76,7 +81,10 @@ public class TestSign4j
         }
         finally
         {
-            peFile.close();
+            if (peFile != null)
+            {
+                peFile.close();
+            }
         }
     }
 }
