@@ -15,4 +15,4 @@ cache:
     - $HOME/.gradle/wrapper/
 
 after_success:
-    - ./gradlew clean cobertura coveralls
+    - ./gradlew clean cobertura coberturaCheck coveralls
