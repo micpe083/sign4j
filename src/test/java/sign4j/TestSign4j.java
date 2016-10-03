@@ -64,8 +64,6 @@ public class TestSign4j
 
         assertTrue("The file " + targetFile + " wasn't changed", sourceFileChecksum != FileUtils.checksumCRC32(targetFile));
 
-        System.out.println(baseFilename + " - " + FileUtils.checksumCRC32(targetFile));
-
         PEFile peFile = null;
         try
         {

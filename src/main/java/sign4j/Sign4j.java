@@ -27,25 +27,22 @@ public class Sign4j
 
     public void sign() throws Exception
     {
-        final int exeFileLen = (int) exeFile.length();
+        final int origExeFileLen = (int) exeFile.length();
 
-        final int blockSize = (exeFileLen > SWAP_BLOCK_SIZE ? SWAP_BLOCK_SIZE : exeFileLen);
+        final int blockSize = (origExeFileLen > SWAP_BLOCK_SIZE ? SWAP_BLOCK_SIZE : origExeFileLen);
 
         final byte[] bytes = new byte[blockSize];
 
         final int sgm = blockSize > END_HEADER_SIZE + MAX_COMMENT_SIZE ? END_HEADER_SIZE + MAX_COMMENT_SIZE : blockSize;
 
-        RandomAccessFile fd = new RandomAccessFile(exeFile, "r");
-        fd.seek(exeFileLen - sgm);
-        fd.readFully(bytes, 0, sgm);
-        close(fd);
+        readBytes(origExeFileLen, bytes, sgm);
 
         int pos;
 
         for (pos = sgm - END_HEADER_SIZE; pos > 0; pos--)
         {
             if (isZipEndHeader(bytes, pos) &&
-                (toUnsignedInt(bytes[pos + END_HEADER_SIZE - 1]) << 8 | toUnsignedInt(bytes[pos + END_HEADER_SIZE - 2])) == sgm - (pos + END_HEADER_SIZE))
+                getCmn(bytes, pos) == sgm - (pos + END_HEADER_SIZE))
             {
                 break;
             }
@@ -53,41 +50,79 @@ public class Sign4j
 
         if (pos > 0)
         {
-            final int off = exeFileLen - (sgm - (pos + END_HEADER_SIZE - 2));
-            int cmn = toUnsignedInt(bytes[pos + END_HEADER_SIZE - 1]) << 8 | toUnsignedInt(bytes[pos + END_HEADER_SIZE - 2]);
-
             copyToTempFile(exeFile, tempFile);
 
             signer.sign(tempFile);
 
             final int tempFileLen = (int) tempFile.length();
-            cmn += tempFileLen - exeFileLen;
+            final int cmn = getCmn(bytes, pos) + tempFileLen - origExeFileLen;
 
             if (cmn < 0 || cmn > MAX_COMMENT_SIZE)
             {
                 throw new Exception("unsupported operation");
             }
 
-            fd = new RandomAccessFile(exeFile, "rw");
-            fd.seek(off);
+            final int cmnOffset = origExeFileLen - (sgm - (pos + END_HEADER_SIZE - 2));
 
-            final byte[] bfr = new byte[2];
-            bfr[0] = (byte) (cmn & 0xFF);
-            bfr[1] = (byte) (cmn >> 8 & 0xFF);
-
-            fd.write(bfr);
-
-            close(fd);
+            writeCmn(cmn, cmnOffset);
         }
         else
         {
-            log("You don't need sign4j to sign this file\n");
+            log("You don't need sign4j to sign this file: " + exeFile);
         }
 
         signer.sign(exeFile);
     }
 
-    static boolean isZipEndHeader(final byte[] image,
+    private void writeCmn(final int cmn,
+                          final int cmnOffset) throws Exception
+    {
+        RandomAccessFile file = null;
+
+        try
+        {
+            file = new RandomAccessFile(exeFile, "rw");
+
+            file.seek(cmnOffset);
+
+            final byte[] bfr = new byte[2];
+            bfr[0] = (byte) (cmn & 0xFF);
+            bfr[1] = (byte) (cmn >> 8 & 0xFF);
+
+            file.write(bfr);
+        }
+        finally
+        {
+            close(file);
+        }
+    }
+
+    private void readBytes(final int origExeFileLen,
+                           final byte[] bytes,
+                           final int sgm) throws Exception
+    {
+        RandomAccessFile file = null;
+
+        try
+        {
+            file = new RandomAccessFile(exeFile, "r");
+            file.seek(origExeFileLen - sgm);
+            file.readFully(bytes, 0, sgm);
+        }
+        finally
+        {
+            close(file);
+        }
+    }
+
+    private int getCmn(final byte[] bytes,
+                       final int pos)
+    {
+        return toUnsignedInt(bytes[pos + END_HEADER_SIZE - 1]) << 8 |
+               toUnsignedInt(bytes[pos + END_HEADER_SIZE - 2]);
+    }
+
+    static boolean isZipEndHeader(final byte[] bytes,
                                   final int offset)
     {
         boolean ret = false;
@@ -96,7 +131,7 @@ public class Sign4j
 
         for (int i = 0; i < zipEndHeader.length; i++)
         {
-            ret = image[offset + i] == zipEndHeader[i];
+            ret = bytes[offset + i] == zipEndHeader[i];
 
             if (!ret)
             {
@@ -139,11 +174,18 @@ public class Sign4j
         }
     }
 
-    static void close(final Closeable c) throws Exception
+    static void close(final Closeable c)
     {
         if (c != null)
         {
-            c.close();
+            try
+            {
+                c.close();
+            }
+            catch (Exception e)
+            {
+                e.printStackTrace();
+            }
         }
     }
 
